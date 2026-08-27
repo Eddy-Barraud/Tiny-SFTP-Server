@@ -6,48 +6,140 @@
 //
 
 import SwiftUI
-import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @EnvironmentObject var settings: SFTPSettings
+    @State private var isLogsExpanded: Bool = false
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
+        VStack(alignment: .leading, spacing: 20) {
+            
+            HStack {
+                Text("Shared Folder:")
+                    .frame(width: 100, alignment: .trailing)
+                TextField("Select a folder...", text: $settings.sharedFolderPath)
+                    .disabled(true)
+                Button("Browse...") {
+                    selectFolder()
                 }
-                .onDelete(perform: deleteItems)
+                .disabled(settings.isServerRunning)
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-            .toolbar {
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
+            
+            HStack {
+                Text("Port:")
+                    .frame(width: 100, alignment: .trailing)
+                TextField("e.g. 2222", text: $settings.port)
+                    .frame(width: 80)
+                    .disabled(settings.isServerRunning)
+            }
+            
+            HStack {
+                Spacer().frame(width: 100)
+                Toggle("Prevent Mac from sleeping when server is running", isOn: $settings.preventSleep)
+            }
+            
+            Divider()
+            
+            HStack {
+                Spacer().frame(width: 100)
+                Toggle("Allow anonymous connections (Any password)", isOn: $settings.allowAnonymous)
+            }
+            
+            HStack {
+                Text("Username:")
+                    .frame(width: 100, alignment: .trailing)
+                TextField("Username", text: $settings.username)
+            }
+            
+            HStack {
+                Text("Password:")
+                    .frame(width: 100, alignment: .trailing)
+                SecureField("Password", text: $settings.password)
+            }
+            
+            HStack {
+                Spacer().frame(width: 100)
+                Button("Wipe Credentials") {
+                    settings.username = ""
+                    settings.password = ""
                 }
             }
-        } detail: {
-            Text("Select an item")
+            
+            Divider()
+            
+            HStack {
+                Spacer()
+                if settings.isServerRunning {
+                    Button("Stop Server") {
+                        SFTPServer.shared.stop()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                } else {
+                    Button("Start Server") {
+                        if settings.sharedFolderPath.isEmpty {
+                            selectFolder()
+                        }
+                        if !settings.sharedFolderPath.isEmpty {
+                            SFTPServer.shared.start()
+                        }
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                }
+                Spacer()
+            }
+            
+            DisclosureGroup(isExpanded: $isLogsExpanded) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(settings.logs) { log in
+                            Text(log.message)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: 150)
+                .padding(4)
+                .background(Color(NSColor.textBackgroundColor))
+                .cornerRadius(4)
+            } label: {
+                HStack {
+                    Text("Server Logs")
+                    Spacer()
+                    Button("Copy") {
+                        let logText = settings.logs.map { $0.message }.joined(separator: "\n")
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(logText, forType: .string)
+                    }
+                    .buttonStyle(BorderlessButtonStyle())
+                }
+            }
+            
         }
+        .padding()
+        .frame(width: 450)
     }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+    
+    private func selectFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK {
+            if let url = panel.url {
+                settings.sharedFolderPath = url.path
+                do {
+                    let bookmarkData = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+                    settings.sharedFolderBookmark = bookmarkData
+                } catch {
+                    print("Failed to save bookmark: \(error)")
+                }
             }
         }
     }
@@ -55,5 +147,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .environmentObject(SFTPSettings.shared)
 }
