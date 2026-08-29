@@ -1,7 +1,7 @@
 import Foundation
-import Citadel
-import NIOSSH
-import NIOCore
+@preconcurrency import Citadel
+@preconcurrency import NIOSSH
+@preconcurrency import NIOCore
 import Crypto
 import NIOFoundationCompat
 
@@ -10,7 +10,7 @@ import NIOFoundationCompat
 /// Extracts SFTP-compatible file attributes for a given local file or directory URL.
 /// - Parameter url: The URL of the local file system item.
 /// - Returns: A populated `Citadel.SFTPFileAttributes` struct.
-fileprivate func getFileAttributes(url: URL) -> Citadel.SFTPFileAttributes {
+nonisolated fileprivate func getFileAttributes(url: URL) -> Citadel.SFTPFileAttributes {
     let attr = try? FileManager.default.attributesOfItem(atPath: url.path)
     let size = attr?[.size] as? UInt64 ?? 0
     let isDirectory = (attr?[.type] as? FileAttributeType) == .typeDirectory
@@ -31,7 +31,7 @@ fileprivate func getFileAttributes(url: URL) -> Citadel.SFTPFileAttributes {
 ///   - url: The item URL.
 ///   - filename: Optional custom display name; defaults to `url.lastPathComponent`.
 /// - Returns: A populated `Citadel.SFTPPathComponent`.
-fileprivate func makePathComponent(url: URL, filename: String? = nil) -> Citadel.SFTPPathComponent {
+nonisolated fileprivate func makePathComponent(url: URL, filename: String? = nil) -> Citadel.SFTPPathComponent {
     let name = filename ?? url.lastPathComponent
     let attr = try? FileManager.default.attributesOfItem(atPath: url.path)
     let size = attr?[.size] as? UInt64 ?? 0
