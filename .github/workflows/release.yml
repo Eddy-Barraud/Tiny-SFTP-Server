@@ -1,0 +1,98 @@
+name: Build, Sign & Release DMG
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers on release tags like v1.0.0
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, Sign, Notarize & Release
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode Version
+        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+
+      - name: Install Apple Certificate (Developer ID Application)
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          # Create temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # Import Developer ID certificate into keychain
+          echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 -k $KEYCHAIN_PATH -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          
+          # Set keychain in search list
+          security list-keychains -d user -s $KEYCHAIN_PATH $(security list-keychains -d user | tr -d '"')
+
+      - name: Build & Archive App
+        run: |
+          xcodebuild clean archive \
+            -scheme Tiny-SFTP-server \
+            -destination "generic/platform=macOS" \
+            -archivePath "$RUNNER_TEMP/Tiny-SFTP-server.xcarchive" \
+            -configuration Release \
+            CODE_SIGN_STYLE="Manual" \
+            CODE_SIGN_IDENTITY="Developer ID Application: ${{ secrets.APPLE_DEVELOPER_NAME }}"
+
+      - name: Export .app from Archive
+        run: |
+          mkdir -p "$RUNNER_TEMP/Export"
+          cp -R "$RUNNER_TEMP/Tiny-SFTP-server.xcarchive/Products/Applications/Tiny-SFTP-server.app" "$RUNNER_TEMP/Export/Tiny-SFTP-server.app"
+
+      - name: Create DMG
+        run: |
+          npm install --global create-dmg
+          mkdir -p "$RUNNER_TEMP/dmg-output"
+          create-dmg \
+            --overwrite \
+            --app-drop-link 180 50 \
+            --icon "Tiny-SFTP-server.app" 60 50 \
+            --window-size 400 200 \
+            "$RUNNER_TEMP/dmg-output/Tiny-SFTP-server.dmg" \
+            "$RUNNER_TEMP/Export/Tiny-SFTP-server.app"
+
+      - name: Sign DMG
+        run: |
+          codesign --force --sign "Developer ID Application: ${{ secrets.APPLE_DEVELOPER_NAME }}" \
+            --timestamp \
+            "$RUNNER_TEMP/dmg-output/Tiny-SFTP-server.dmg"
+
+      - name: Notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool submit "$RUNNER_TEMP/dmg-output/Tiny-SFTP-server.dmg" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+      - name: Staple Notarization Ticket
+        run: |
+          xcrun stapler staple "$RUNNER_TEMP/dmg-output/Tiny-SFTP-server.dmg"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ runner.temp }}/dmg-output/Tiny-SFTP-server.dmg
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
