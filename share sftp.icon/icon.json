@@ -1,0 +1,57 @@
+{
+  "fill" : "automatic",
+  "groups" : [
+    {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "SVG image 5.svg",
+          "name" : "SVG image 5",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              42.08185836004259
+            ]
+          }
+        },
+        {
+          "glass" : false,
+          "image-name" : "SVG image 6.svg",
+          "name" : "SVG image 6",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              26.200296716836306,
+              -67.3965
+            ]
+          }
+        }
+      ],
+      "lighting" : "combined",
+      "position" : {
+        "scale" : 4,
+        "translation-in-points" : [
+          0,
+          0
+        ]
+      },
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}
