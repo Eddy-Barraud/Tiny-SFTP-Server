@@ -100,18 +100,6 @@ class SFTPServer {
     private var accessedURL: URL?
     private var sshServer: SSHServer?
     
-    /// Persists or retrieves a stable ED25519 host key so clients do not see host key mismatch warnings on restart.
-    private static func getOrCreateHostKey() -> NIOSSHPrivateKey {
-        let keyStorageKey = "sftpHostKeySeed"
-        if let seedData = UserDefaults.standard.data(forKey: keyStorageKey),
-           let privateKey = try? Curve25519.Signing.PrivateKey(rawRepresentation: seedData) {
-            return NIOSSHPrivateKey(ed25519Key: privateKey)
-        }
-        let newKey = Curve25519.Signing.PrivateKey()
-        UserDefaults.standard.set(newKey.rawRepresentation, forKey: keyStorageKey)
-        return NIOSSHPrivateKey(ed25519Key: newKey)
-    }
-    
     /// Starts the SFTP server on the configured port.
     func start() {
         guard sshServer == nil else {
@@ -137,11 +125,11 @@ class SFTPServer {
         
         Task {
             do {
-                let hostKey = SFTPServer.getOrCreateHostKey()
+                let privateKey = NIOSSHPrivateKey(ed25519Key: .init())
                 let server = try await SSHServer.host(
                     host: "0.0.0.0",
                     port: portNumber,
-                    hostKeys: [hostKey],
+                    hostKeys: [privateKey],
                     authenticationDelegate: LoginHandler()
                 )
                 
@@ -292,7 +280,8 @@ final nonisolated class MySFTPDelegate: SFTPDelegate {
         }
         let url = try resolvePath(path)
         let name = path == "/" ? "/" : url.lastPathComponent
-        return [makePathComponent(url: url, filename: name)]
+        let attributes = getFileAttributes(url: url)
+        return [Citadel.SFTPPathComponent(filename: name, longname: name, attributes: attributes)]
     }
     
     func openDirectory(atPath path: String, context: Citadel.SSHContext) async throws -> any Citadel.SFTPDirectoryHandle {
@@ -341,8 +330,8 @@ final nonisolated class MyFileHandle: SFTPFileHandle {
     
     func read(at offset: UInt64, length: UInt32) async throws -> NIOCore.ByteBuffer {
         try fileHandle.seek(toOffset: offset)
-        // Cap single read request to 256KB to avoid memory exhaustion from malformed client requests
-        let safeLength = min(Int(length), 262144)
+        // Cap single read request to 32KB (standard SFTP packet payload limit) to prevent buffer overflows
+        let safeLength = min(Int(length), 32768)
         if #available(macOS 10.15.4, *) {
             if let data = try fileHandle.read(upToCount: safeLength) {
                 return ByteBuffer(bytes: data)
@@ -387,17 +376,12 @@ final nonisolated class MyFileHandle: SFTPFileHandle {
 /// Represents an active directory handle for enumerating directory entries.
 final nonisolated class MyDirectoryHandle: SFTPDirectoryHandle {
     let url: URL
-    private var listed = false
     
     init(url: URL) {
         self.url = url
     }
     
     func listFiles(context: Citadel.SSHContext) async throws -> [Citadel.SFTPFileListing] {
-        // Return empty listing on subsequent calls to indicate EOF
-        if listed { return [] }
-        listed = true
-        
         var paths = [Citadel.SFTPPathComponent]()
         paths.append(makePathComponent(url: url, filename: "."))
         paths.append(makePathComponent(url: url.deletingLastPathComponent(), filename: ".."))
@@ -407,6 +391,8 @@ final nonisolated class MyDirectoryHandle: SFTPDirectoryHandle {
         for item in contents {
             paths.append(makePathComponent(url: item))
         }
-        return [Citadel.SFTPFileListing(path: paths)]
+        
+        // Chunk each item into its own SFTPFileListing so Citadel streams them across readdir calls without exceeding packet limits
+        return paths.map { Citadel.SFTPFileListing(path: [$0]) }
     }
 }
