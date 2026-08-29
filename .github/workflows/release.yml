@@ -87,15 +87,15 @@ jobs:
 
       - name: Create DMG
         run: |
-          npm install --global create-dmg
+          mkdir -p "$RUNNER_TEMP/dmg-source"
+          cp -R "$RUNNER_TEMP/Export/Tiny-SFTP-server.app" "$RUNNER_TEMP/dmg-source/"
+          ln -s /Applications "$RUNNER_TEMP/dmg-source/Applications"
+          
           mkdir -p "$RUNNER_TEMP/dmg-output"
-          create-dmg \
-            --overwrite \
-            --app-drop-link 180 50 \
-            --icon "Tiny-SFTP-server.app" 60 50 \
-            --window-size 400 200 \
-            "$RUNNER_TEMP/dmg-output/Tiny-SFTP-server.dmg" \
-            "$RUNNER_TEMP/Export/Tiny-SFTP-server.app"
+          hdiutil create -volname "Tiny SFTP Server" \
+            -srcfolder "$RUNNER_TEMP/dmg-source" \
+            -ov -format UDZO \
+            "$RUNNER_TEMP/dmg-output/Tiny-SFTP-server.dmg"
 
       - name: Sign DMG
         run: |
