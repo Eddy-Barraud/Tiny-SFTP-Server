@@ -16,5 +16,7 @@ struct Tiny_SFTP_serverApp: App {
             ContentView()
                 .environmentObject(settings)
         }
+        .windowResizability(.contentSize)
+        .defaultSize(width: 320, height: 600)
     }
 }

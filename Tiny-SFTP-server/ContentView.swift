@@ -113,7 +113,7 @@ struct ContentView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(height: 150)
+                .frame(minHeight: 120, maxHeight: 220)
                 .padding(4)
                 .background(Color(NSColor.textBackgroundColor))
                 .cornerRadius(4)
@@ -132,7 +132,7 @@ struct ContentView: View {
             
         }
         .padding()
-        .frame(width: 300)
+        .frame(minWidth: 300, idealWidth: 320, maxWidth: 360, minHeight: 560, idealHeight: 600)
     }
     
     // MARK: - Folder Picker Modal
