@@ -11,14 +11,14 @@ permissions:
 jobs:
   release:
     name: Build, Sign, Notarize & Release
-    runs-on: macos-26
+    runs-on: macos-15
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Select Xcode Version
-        run: sudo xcode-select -switch /Applications/Xcode_15.4.app
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
 
       - name: Install Apple Certificate (Developer ID Application)
         env:
