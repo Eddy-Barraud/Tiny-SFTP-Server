@@ -1,12 +1,15 @@
 import Foundation
 import IOKit.pwr_mgt
 
+/// Manages system sleep prevention using macOS IOKit power assertions while the SFTP server is active.
+@MainActor
 class SleepPreventer {
     static let shared = SleepPreventer()
     
     private var assertionID: IOPMAssertionID = 0
     private var isPreventingSleep = false
     
+    /// Requests a power management assertion to prevent the Mac from entering display and system sleep.
     func startPreventingSleep() {
         guard !isPreventingSleep else { return }
         
@@ -20,21 +23,30 @@ class SleepPreventer {
         
         if success == kIOReturnSuccess {
             isPreventingSleep = true
-            print("Successfully prevented sleep.")
+            #if DEBUG
+            print("Sleep prevention activated.")
+            #endif
         } else {
-            print("Failed to prevent sleep.")
+            #if DEBUG
+            print("Failed to activate sleep prevention. Return code: \(success)")
+            #endif
         }
     }
     
+    /// Releases the active power management assertion, allowing the system to sleep normally.
     func stopPreventingSleep() {
         guard isPreventingSleep else { return }
         
         let success = IOPMAssertionRelease(assertionID)
         if success == kIOReturnSuccess {
             isPreventingSleep = false
-            print("Successfully allowed sleep.")
+            #if DEBUG
+            print("Sleep prevention released.")
+            #endif
         } else {
-            print("Failed to allow sleep.")
+            #if DEBUG
+            print("Failed to release sleep prevention assertion. Return code: \(success)")
+            #endif
         }
     }
 }

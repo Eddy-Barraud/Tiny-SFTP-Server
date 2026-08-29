@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+/// Main control interface for configuring and running the Tiny SFTP Server.
 struct ContentView: View {
     @EnvironmentObject var settings: SFTPSettings
     @State private var isLogsExpanded: Bool = false
@@ -14,6 +15,7 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             
+            // MARK: - Shared Directory Selection
             HStack {
                 Text("Shared Folder:")
                     .frame(width: 100, alignment: .trailing)
@@ -25,6 +27,7 @@ struct ContentView: View {
                 .disabled(settings.isServerRunning)
             }
             
+            // MARK: - Port Configuration
             HStack {
                 Text("Port:")
                     .frame(width: 100, alignment: .trailing)
@@ -33,6 +36,7 @@ struct ContentView: View {
                     .disabled(settings.isServerRunning)
             }
             
+            // MARK: - Power Management Toggle
             HStack {
                 Spacer().frame(width: 100)
                 Toggle("Prevent Mac from sleeping when server is running", isOn: $settings.preventSleep)
@@ -40,6 +44,7 @@ struct ContentView: View {
             
             Divider()
             
+            // MARK: - Authentication Settings
             HStack {
                 Spacer().frame(width: 100)
                 Toggle("Allow anonymous connections (Any password)", isOn: $settings.allowAnonymous)
@@ -67,6 +72,7 @@ struct ContentView: View {
             
             Divider()
             
+            // MARK: - Server Control Button
             HStack {
                 Spacer()
                 if settings.isServerRunning {
@@ -92,6 +98,7 @@ struct ContentView: View {
                 Spacer()
             }
             
+            // MARK: - Live Server Logs
             DisclosureGroup(isExpanded: $isLogsExpanded) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 4) {
@@ -126,6 +133,9 @@ struct ContentView: View {
         .frame(width: 450)
     }
     
+    // MARK: - Folder Picker Modal
+    
+    /// Presents the native macOS Open Panel to select a folder and creates a security-scoped bookmark.
     private func selectFolder() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -135,10 +145,16 @@ struct ContentView: View {
             if let url = panel.url {
                 settings.sharedFolderPath = url.path
                 do {
-                    let bookmarkData = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+                    let bookmarkData = try url.bookmarkData(
+                        options: .withSecurityScope,
+                        includingResourceValuesForKeys: nil,
+                        relativeTo: nil
+                    )
                     settings.sharedFolderBookmark = bookmarkData
                 } catch {
-                    print("Failed to save bookmark: \(error)")
+                    #if DEBUG
+                    print("Failed to create security-scoped bookmark: \(error)")
+                    #endif
                 }
             }
         }
