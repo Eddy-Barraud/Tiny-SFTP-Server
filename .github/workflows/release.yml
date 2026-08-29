@@ -45,6 +45,24 @@ jobs:
           security list-keychains -d user -s $KEYCHAIN_PATH $(security list-keychains -d user | tr -d '"')
           security default-keychain -s $KEYCHAIN_PATH
 
+          # Verify identity and extract the exact certificate name
+          echo "=== Installed Signing Identities ==="
+          security find-identity -v -p codesigning $KEYCHAIN_PATH
+          
+          SIGNING_IDENTITY=$(security find-identity -v -p codesigning $KEYCHAIN_PATH | grep "Developer ID Application:" | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ -z "$SIGNING_IDENTITY" ]; then
+            # Fallback to the first valid codesigning identity if not named Developer ID
+            SIGNING_IDENTITY=$(security find-identity -v -p codesigning $KEYCHAIN_PATH | grep -E '^\s*1\)' | sed -E 's/.*"([^"]+)".*/\1/')
+          fi
+          
+          if [ -z "$SIGNING_IDENTITY" ]; then
+            echo "::error::No codesigning identity found in the imported .p12 certificate. Please verify that the .p12 contains the private key."
+            exit 1
+          fi
+          
+          echo "Using Signing Identity: $SIGNING_IDENTITY"
+          echo "SIGNING_IDENTITY=$SIGNING_IDENTITY" >> $GITHUB_ENV
+
       - name: Build & Archive App
         run: |
           xcodebuild clean archive \
@@ -63,7 +81,7 @@ jobs:
           # Sign all frameworks, dylibs, and the main app binary with Developer ID & Hardened Runtime
           codesign --force --deep --options runtime \
             --keychain "$RUNNER_TEMP/build.keychain" \
-            --sign "Developer ID Application: ${{ secrets.APPLE_DEVELOPER_NAME }}" \
+            --sign "$SIGNING_IDENTITY" \
             --timestamp \
             "$RUNNER_TEMP/Export/Tiny-SFTP-server.app"
 
@@ -83,7 +101,7 @@ jobs:
         run: |
           codesign --force \
             --keychain "$RUNNER_TEMP/build.keychain" \
-            --sign "Developer ID Application: ${{ secrets.APPLE_DEVELOPER_NAME }}" \
+            --sign "$SIGNING_IDENTITY" \
             --timestamp \
             "$RUNNER_TEMP/dmg-output/Tiny-SFTP-server.dmg"
 
