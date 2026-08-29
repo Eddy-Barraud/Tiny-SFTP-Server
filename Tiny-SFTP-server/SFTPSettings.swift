@@ -6,6 +6,7 @@ struct LogEntry: Identifiable {
     let message: String
 }
 
+@MainActor
 class SFTPSettings: ObservableObject {
     static let shared = SFTPSettings()
     

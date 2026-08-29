@@ -39,7 +39,7 @@ fileprivate func makePathComponent(url: URL, filename: String? = nil) -> Citadel
     return Citadel.SFTPPathComponent(filename: name, longname: longname, attributes: attributes)
 }
 
-final class LoginHandler: NIOSSHServerUserAuthenticationDelegate {
+final nonisolated class LoginHandler: NIOSSHServerUserAuthenticationDelegate {
     var supportedAuthenticationMethods: NIOSSHAvailableUserAuthenticationMethods {
         .password
     }
@@ -53,21 +53,23 @@ final class LoginHandler: NIOSSHServerUserAuthenticationDelegate {
         let username = request.username
         let password = passwordRequest.password
 
-        if SFTPSettings.shared.allowAnonymous && (username.lowercased() == "anonymous" || username.lowercased() == "ftp" || password == "") {
-            SFTPSettings.shared.log("Anonymous login successful")
-            responsePromise.succeed(.success)
-            return
-        }
-        
-        let correctUsername = SFTPSettings.shared.username
-        let correctPassword = SFTPSettings.shared.password
-        
-        if username == correctUsername && password == correctPassword {
-            SFTPSettings.shared.log("User '\(username)' logged in successfully")
-            responsePromise.succeed(.success)
-        } else {
-            SFTPSettings.shared.log("Failed login attempt for '\(username)'")
-            responsePromise.succeed(.failure)
+        Task { @MainActor in
+            if SFTPSettings.shared.allowAnonymous && (username.lowercased() == "anonymous" || username.lowercased() == "ftp" || password == "") {
+                SFTPSettings.shared.log("Anonymous login successful")
+                responsePromise.succeed(.success)
+                return
+            }
+            
+            let correctUsername = SFTPSettings.shared.username
+            let correctPassword = SFTPSettings.shared.password
+            
+            if username == correctUsername && password == correctPassword {
+                SFTPSettings.shared.log("User '\(username)' logged in successfully")
+                responsePromise.succeed(.success)
+            } else {
+                SFTPSettings.shared.log("Failed login attempt for '\(username)'")
+                responsePromise.succeed(.failure)
+            }
         }
     }
 }
@@ -134,7 +136,7 @@ class SFTPServer {
     }
 }
 
-final class MySFTPDelegate: SFTPDelegate {
+final nonisolated class MySFTPDelegate: SFTPDelegate {
     let baseDirectory: URL?
     
     init(baseDirectory: URL?) {
@@ -163,19 +165,19 @@ final class MySFTPDelegate: SFTPDelegate {
         let url = try resolvePath(filePath)
         if !FileManager.default.fileExists(atPath: url.path) {
             if flags.contains(.create) {
-                SFTPSettings.shared.log("Created file: \(filePath)")
+                await SFTPSettings.shared.log("Created file: \(filePath)")
                 FileManager.default.createFile(atPath: url.path, contents: nil, attributes: nil)
             } else {
-                SFTPSettings.shared.log("Failed to open file (not found): \(filePath)")
+                await SFTPSettings.shared.log("Failed to open file (not found): \(filePath)")
                 throw NSError(domain: "SFTPServer", code: 404, userInfo: nil)
             }
         }
         let fileHandle: FileHandle
         if flags.contains(.write) || flags.contains(.append) {
-            SFTPSettings.shared.log("Opened file for writing: \(filePath)")
+            await SFTPSettings.shared.log("Opened file for writing: \(filePath)")
             fileHandle = try FileHandle(forUpdating: url)
         } else {
-            SFTPSettings.shared.log("Opened file for reading: \(filePath)")
+            await SFTPSettings.shared.log("Opened file for reading: \(filePath)")
             fileHandle = try FileHandle(forReadingFrom: url)
         }
         return MyFileHandle(fileHandle: fileHandle, url: url)
@@ -184,21 +186,21 @@ final class MySFTPDelegate: SFTPDelegate {
     func removeFile(_ filePath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
         let url = try resolvePath(filePath)
         try FileManager.default.removeItem(at: url)
-        SFTPSettings.shared.log("Removed file: \(filePath)")
+        await SFTPSettings.shared.log("Removed file: \(filePath)")
         return .ok
     }
     
     func createDirectory(_ filePath: String, withAttributes: Citadel.SFTPFileAttributes, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
         let url = try resolvePath(filePath)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false, attributes: nil)
-        SFTPSettings.shared.log("Created directory: \(filePath)")
+        await SFTPSettings.shared.log("Created directory: \(filePath)")
         return .ok
     }
     
     func removeDirectory(_ filePath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
         let url = try resolvePath(filePath)
         try FileManager.default.removeItem(at: url)
-        SFTPSettings.shared.log("Removed directory: \(filePath)")
+        await SFTPSettings.shared.log("Removed directory: \(filePath)")
         return .ok
     }
     
@@ -214,7 +216,7 @@ final class MySFTPDelegate: SFTPDelegate {
     
     func openDirectory(atPath path: String, context: Citadel.SSHContext) async throws -> any Citadel.SFTPDirectoryHandle {
         let url = try resolvePath(path)
-        SFTPSettings.shared.log("Listed directory: \(path)")
+        await SFTPSettings.shared.log("Listed directory: \(path)")
         return MyDirectoryHandle(url: url)
     }
     
@@ -234,12 +236,12 @@ final class MySFTPDelegate: SFTPDelegate {
         let oldUrl = try resolvePath(oldPath)
         let newUrl = try resolvePath(newPath)
         try FileManager.default.moveItem(at: oldUrl, to: newUrl)
-        SFTPSettings.shared.log("Renamed: \(oldPath) -> \(newPath)")
+        await SFTPSettings.shared.log("Renamed: \(oldPath) -> \(newPath)")
         return .ok
     }
 }
 
-final class MyFileHandle: SFTPFileHandle {
+final nonisolated class MyFileHandle: SFTPFileHandle {
     let fileHandle: FileHandle
     let url: URL
     
@@ -292,7 +294,7 @@ final class MyFileHandle: SFTPFileHandle {
     }
 }
 
-final class MyDirectoryHandle: SFTPDirectoryHandle {
+final nonisolated class MyDirectoryHandle: SFTPDirectoryHandle {
     let url: URL
     private var listed = false
     
