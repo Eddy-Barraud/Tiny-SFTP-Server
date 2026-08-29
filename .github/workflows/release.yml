@@ -11,7 +11,7 @@ permissions:
 jobs:
   release:
     name: Build, Sign, Notarize & Release
-    runs-on: macos-15
+    runs-on: macos-26
 
     steps:
       - name: Checkout repository
@@ -41,8 +41,9 @@ jobs:
           security import $RUNNER_TEMP/certificate.p12 -k $KEYCHAIN_PATH -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           
-          # Set keychain in search list
+          # Set keychain in search list and make it default
           security list-keychains -d user -s $KEYCHAIN_PATH $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s $KEYCHAIN_PATH
 
       - name: Build & Archive App
         run: |
@@ -51,13 +52,20 @@ jobs:
             -destination "generic/platform=macOS" \
             -archivePath "$RUNNER_TEMP/Tiny-SFTP-server.xcarchive" \
             -configuration Release \
-            CODE_SIGN_STYLE="Manual" \
-            CODE_SIGN_IDENTITY="Developer ID Application: ${{ secrets.APPLE_DEVELOPER_NAME }}"
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="-"
 
-      - name: Export .app from Archive
+      - name: Export & Sign .app
         run: |
           mkdir -p "$RUNNER_TEMP/Export"
           cp -R "$RUNNER_TEMP/Tiny-SFTP-server.xcarchive/Products/Applications/Tiny-SFTP-server.app" "$RUNNER_TEMP/Export/Tiny-SFTP-server.app"
+          
+          # Sign all frameworks, dylibs, and the main app binary with Developer ID & Hardened Runtime
+          codesign --force --deep --options runtime \
+            --keychain "$RUNNER_TEMP/build.keychain" \
+            --sign "Developer ID Application: ${{ secrets.APPLE_DEVELOPER_NAME }}" \
+            --timestamp \
+            "$RUNNER_TEMP/Export/Tiny-SFTP-server.app"
 
       - name: Create DMG
         run: |
@@ -73,7 +81,9 @@ jobs:
 
       - name: Sign DMG
         run: |
-          codesign --force --sign "Developer ID Application: ${{ secrets.APPLE_DEVELOPER_NAME }}" \
+          codesign --force \
+            --keychain "$RUNNER_TEMP/build.keychain" \
+            --sign "Developer ID Application: ${{ secrets.APPLE_DEVELOPER_NAME }}" \
             --timestamp \
             "$RUNNER_TEMP/dmg-output/Tiny-SFTP-server.dmg"
 
