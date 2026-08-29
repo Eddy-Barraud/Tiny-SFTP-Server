@@ -2,7 +2,6 @@ import Foundation
 import Citadel
 import NIOSSH
 import NIOCore
-import NIOPosix
 import Crypto
 import NIOFoundationCompat
 

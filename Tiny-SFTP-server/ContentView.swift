@@ -15,60 +15,62 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             
-            // MARK: - Shared Directory Selection
-            HStack {
-                Text("Shared Folder:")
-                    .frame(width: 100, alignment: .trailing)
-                TextField("Select a folder...", text: $settings.sharedFolderPath)
-                    .disabled(true)
-                Button("Browse...") {
-                    selectFolder()
+            // MARK: - Configuration Settings (Disabled while server is running)
+            Group {
+                // MARK: - Shared Directory Selection
+                HStack {
+                    Text("Shared Folder:")
+                        .frame(width: 100, alignment: .trailing)
+                    TextField("Select a folder...", text: $settings.sharedFolderPath)
+                        .disabled(true)
+                    Button("Browse...") {
+                        selectFolder()
+                    }
                 }
-                .disabled(settings.isServerRunning)
-            }
-            
-            // MARK: - Port Configuration
-            HStack {
-                Text("Port:")
-                    .frame(width: 100, alignment: .trailing)
-                TextField("e.g. 2222", text: $settings.port)
-                    .frame(width: 80)
-                    .disabled(settings.isServerRunning)
-            }
-            
-            // MARK: - Power Management Toggle
-            HStack {
-                Spacer().frame(width: 100)
-                Toggle("Prevent Mac from sleeping when server is running", isOn: $settings.preventSleep)
-            }
-            
-            Divider()
-            
-            // MARK: - Authentication Settings
-            HStack {
-                Spacer().frame(width: 100)
-                Toggle("Allow anonymous connections (Any password)", isOn: $settings.allowAnonymous)
-            }
-            
-            HStack {
-                Text("Username:")
-                    .frame(width: 100, alignment: .trailing)
-                TextField("Username", text: $settings.username)
-            }
-            
-            HStack {
-                Text("Password:")
-                    .frame(width: 100, alignment: .trailing)
-                SecureField("Password", text: $settings.password)
-            }
-            
-            HStack {
-                Spacer().frame(width: 100)
-                Button("Wipe Credentials") {
-                    settings.username = ""
-                    settings.password = ""
+                
+                // MARK: - Port Configuration
+                HStack {
+                    Text("Port:")
+                        .frame(width: 100, alignment: .trailing)
+                    TextField("e.g. 2222", text: $settings.port)
+                        .frame(width: 80)
+                }
+                
+                // MARK: - Power Management Toggle
+                HStack {
+                    Spacer().frame(width: 100)
+                    Toggle("Prevent Mac from sleeping when server is running", isOn: $settings.preventSleep)
+                }
+                
+                Divider()
+                
+                // MARK: - Authentication Settings
+                HStack {
+                    Spacer().frame(width: 100)
+                    Toggle("Allow anonymous connections (Any password)", isOn: $settings.allowAnonymous)
+                }
+                
+                HStack {
+                    Text("Username:")
+                        .frame(width: 100, alignment: .trailing)
+                    TextField("Username", text: $settings.username)
+                }
+                
+                HStack {
+                    Text("Password:")
+                        .frame(width: 100, alignment: .trailing)
+                    SecureField("Password", text: $settings.password)
+                }
+                
+                HStack {
+                    Spacer().frame(width: 100)
+                    Button("Wipe Credentials") {
+                        settings.username = ""
+                        settings.password = ""
+                    }
                 }
             }
+            .disabled(settings.isServerRunning)
             
             Divider()
             
@@ -130,7 +132,7 @@ struct ContentView: View {
             
         }
         .padding()
-        .frame(width: 450)
+        .frame(width: 300)
     }
     
     // MARK: - Folder Picker Modal
