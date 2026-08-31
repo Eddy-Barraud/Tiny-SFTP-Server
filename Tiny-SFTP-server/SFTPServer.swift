@@ -115,7 +115,7 @@ class SFTPServer {
     static let shared = SFTPServer()
     
     private var accessedURL: URL?
-    private var sshServer: SSHServer?
+    private var sshServer: SFTPServerEngine?
     
     /// Starts the SFTP server on the configured port.
     func start() {
@@ -143,15 +143,16 @@ class SFTPServer {
         Task {
             do {
                 let privateKey = HostKeyManager.shared.getOrCreateHostPrivateKey()
-                let server = try await SSHServer.host(
-                    host: "0.0.0.0",
+                
+                let sftpDelegate = MySFTPDelegate(baseDirectory: folderURL)
+                let server = try await SFTPServerEngine.start(
                     port: portNumber,
                     hostKeys: [privateKey],
-                    authenticationDelegate: LoginHandler()
+                    sftpDelegate: sftpDelegate,
+                    authDelegate: LoginHandler()
                 )
                 
                 self.sshServer = server
-                server.enableSFTP(withDelegate: MySFTPDelegate(baseDirectory: folderURL))
                 
                 SFTPSettings.shared.log("Server listening on port \(portNumber)")
                 SFTPSettings.shared.isServerRunning = true
@@ -168,7 +169,7 @@ class SFTPServer {
     /// Gracefully stops the SFTP server and releases all security-scoped resources.
     func stop() {
         Task {
-            try? await sshServer?.close()
+            await sshServer?.close()
             sshServer = nil
             
             SFTPSettings.shared.isServerRunning = false
