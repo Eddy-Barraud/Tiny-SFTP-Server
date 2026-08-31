@@ -101,6 +101,47 @@ struct ContentView: View {
                     Spacer()
                 }
                 
+                // MARK: - Network Traffic & Bandwidth Monitor (Active when server is running)
+                if settings.isServerRunning {
+                    VStack(spacing: 8) {
+                        HStack(spacing: 16) {
+                            Spacer()
+                            // Input (Client Upload / Inbound to Server)
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                    .foregroundColor(.green)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(String(format: "In: %.2f Mbps", settings.inputBandwidthMbps))
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    Text("Total: \(settings.formattedTotalIn)")
+                                        .font(.system(size: 9, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            
+                            Divider().frame(height: 24)
+                            
+                            // Output (Client Download / Outbound from Server)
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .foregroundColor(.blue)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(String(format: "Out: %.2f Mbps", settings.outputBandwidthMbps))
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    Text("Total: \(settings.formattedTotalOut)")
+                                        .font(.system(size: 9, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            Spacer()
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.6))
+                    .cornerRadius(8)
+                }
+                
                 // MARK: - Live Server Logs
                 DisclosureGroup(isExpanded: $isLogsExpanded) {
                     ScrollView {

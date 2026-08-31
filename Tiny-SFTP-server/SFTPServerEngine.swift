@@ -113,6 +113,7 @@ final class SSHChannelDataUnwrapper: ChannelInboundHandler, @unchecked Sendable 
         guard case .byteBuffer(let bytes) = channelData.data, case .channel = channelData.type else {
             return
         }
+        BandwidthTracker.shared.recordInbound(bytes: bytes.readableBytes)
         context.fireChannelRead(self.wrapInboundOut(bytes))
     }
 
@@ -130,6 +131,7 @@ final class SSHOutboundChannelDataWrapper: ChannelOutboundHandler, @unchecked Se
 
     func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let buffer = self.unwrapOutboundIn(data)
+        BandwidthTracker.shared.recordOutbound(bytes: buffer.readableBytes)
         context.write(self.wrapOutboundOut(SSHChannelData(type: .channel, data: .byteBuffer(buffer))), promise: promise)
     }
 }

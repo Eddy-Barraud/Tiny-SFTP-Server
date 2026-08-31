@@ -24,9 +24,60 @@ class SFTPSettings: ObservableObject {
     
     // MARK: - Published Runtime State
     
-    @Published var isServerRunning: Bool = false
+    @Published var isServerRunning: Bool = false {
+        didSet {
+            if isServerRunning {
+                startBandwidthMonitoring()
+            } else {
+                stopBandwidthMonitoring()
+            }
+        }
+    }
     @Published var logs: [LogEntry] = []
     @Published var errorMessage: String? = nil
+    @Published var inputBandwidthMbps: Double = 0.0
+    @Published var outputBandwidthMbps: Double = 0.0
+    @Published var totalBytesIn: UInt64 = 0
+    @Published var totalBytesOut: UInt64 = 0
+    
+    var formattedTotalIn: String {
+        ByteCountFormatter.string(fromByteCount: Int64(totalBytesIn), countStyle: .file)
+    }
+    
+    var formattedTotalOut: String {
+        ByteCountFormatter.string(fromByteCount: Int64(totalBytesOut), countStyle: .file)
+    }
+    
+    private var bandwidthTimer: AnyCancellable?
+    
+    private func startBandwidthMonitoring() {
+        BandwidthTracker.shared.reset()
+        inputBandwidthMbps = 0.0
+        outputBandwidthMbps = 0.0
+        totalBytesIn = 0
+        totalBytesOut = 0
+        
+        bandwidthTimer = Timer.publish(every: 1.0, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self = self, self.isServerRunning else { return }
+                let sample = BandwidthTracker.shared.sampleThroughput()
+                self.inputBandwidthMbps = sample.inputMbps
+                self.outputBandwidthMbps = sample.outputMbps
+                self.totalBytesIn = sample.totalBytesIn
+                self.totalBytesOut = sample.totalBytesOut
+            }
+    }
+    
+    private func stopBandwidthMonitoring() {
+        bandwidthTimer?.cancel()
+        bandwidthTimer = nil
+        BandwidthTracker.shared.reset()
+        inputBandwidthMbps = 0.0
+        outputBandwidthMbps = 0.0
+        totalBytesIn = 0
+        totalBytesOut = 0
+    }
     
     // MARK: - Security-Scoped Folder Resolution
     
