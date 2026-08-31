@@ -9,20 +9,27 @@ import NIOFoundationCompat
 
 /// Extracts SFTP-compatible file attributes for a given local file or directory URL.
 /// - Parameter url: The URL of the local file system item.
+/// - Throws: An error if the file or directory does not exist or attributes cannot be read.
 /// - Returns: A populated `Citadel.SFTPFileAttributes` struct.
-nonisolated fileprivate func getFileAttributes(url: URL) -> Citadel.SFTPFileAttributes {
-    let attr = try? FileManager.default.attributesOfItem(atPath: url.path)
-    let size = attr?[.size] as? UInt64 ?? 0
-    let isDirectory = (attr?[.type] as? FileAttributeType) == .typeDirectory
+nonisolated fileprivate func getFileAttributes(url: URL) throws -> Citadel.SFTPFileAttributes {
+    guard FileManager.default.fileExists(atPath: url.path) else {
+        throw NSError(domain: "SFTPServer", code: 404, userInfo: [NSLocalizedDescriptionKey: "No such file or directory"])
+    }
+    let attr = try FileManager.default.attributesOfItem(atPath: url.path)
+    let size = attr[.size] as? UInt64 ?? 0
+    let isDirectory = (attr[.type] as? FileAttributeType) == .typeDirectory
     
     var attributes = Citadel.SFTPFileAttributes(size: size)
-    var permissions = (attr?[.posixPermissions] as? NSNumber)?.uint32Value ?? (isDirectory ? 0o755 : 0o644)
+    var permissions = (attr[.posixPermissions] as? NSNumber)?.uint32Value ?? (isDirectory ? 0o755 : 0o644)
     if isDirectory {
         permissions |= 0o040000 // S_IFDIR
     } else {
         permissions |= 0o100000 // S_IFREG
     }
     attributes.permissions = permissions
+    let modDate = (attr[.modificationDate] as? Date) ?? Date()
+    let accessDate = (attr[.creationDate] as? Date) ?? modDate
+    attributes.accessModificationTime = .init(accessTime: accessDate, modificationTime: modDate)
     return attributes
 }
 
@@ -33,17 +40,27 @@ nonisolated fileprivate func getFileAttributes(url: URL) -> Citadel.SFTPFileAttr
 /// - Returns: A populated `Citadel.SFTPPathComponent`.
 nonisolated fileprivate func makePathComponent(url: URL, filename: String? = nil) -> Citadel.SFTPPathComponent {
     let name = filename ?? url.lastPathComponent
-    let attr = try? FileManager.default.attributesOfItem(atPath: url.path)
-    let size = attr?[.size] as? UInt64 ?? 0
-    let isDirectory = (attr?[.type] as? FileAttributeType) == .typeDirectory
-    let attributes = getFileAttributes(url: url)
+    let attr = (try? FileManager.default.attributesOfItem(atPath: url.path)) ?? [:]
+    let size = attr[.size] as? UInt64 ?? 0
+    let isDirectory = (attr[.type] as? FileAttributeType) == .typeDirectory
     
-    let typeChar = isDirectory ? "d" : "-"
-    let date = Date()
+    var attributes = Citadel.SFTPFileAttributes(size: size)
+    var permissions = (attr[.posixPermissions] as? NSNumber)?.uint32Value ?? (isDirectory ? 0o755 : 0o644)
+    if isDirectory {
+        permissions |= 0o040000 // S_IFDIR
+    } else {
+        permissions |= 0o100000 // S_IFREG
+    }
+    attributes.permissions = permissions
+    let modDate = (attr[.modificationDate] as? Date) ?? Date()
+    let accessDate = (attr[.creationDate] as? Date) ?? modDate
+    attributes.accessModificationTime = .init(accessTime: accessDate, modificationTime: modDate)
+    
     let formatter = DateFormatter()
     formatter.dateFormat = "MMM dd HH:mm"
-    let dateString = formatter.string(from: (attr?[.modificationDate] as? Date) ?? date)
+    let dateString = formatter.string(from: modDate)
     
+    let typeChar = isDirectory ? "d" : "-"
     let longname = "\(typeChar)rwxr-xr-x 1 owner group \(size) \(dateString) \(name)"
     return Citadel.SFTPPathComponent(filename: name, longname: longname, attributes: attributes)
 }
@@ -125,7 +142,7 @@ class SFTPServer {
         
         Task {
             do {
-                let privateKey = NIOSSHPrivateKey(ed25519Key: .init())
+                let privateKey = HostKeyManager.shared.getOrCreateHostPrivateKey()
                 let server = try await SSHServer.host(
                     host: "0.0.0.0",
                     port: portNumber,
@@ -205,7 +222,7 @@ final nonisolated class MySFTPDelegate: SFTPDelegate {
     
     func fileAttributes(atPath path: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPFileAttributes {
         let url = try resolvePath(path)
-        return getFileAttributes(url: url)
+        return try getFileAttributes(url: url)
     }
     
     func openFile(_ filePath: String, withAttributes: Citadel.SFTPFileAttributes, flags: Citadel.SFTPOpenFileFlags, context: Citadel.SSHContext) async throws -> any Citadel.SFTPFileHandle {
@@ -280,7 +297,7 @@ final nonisolated class MySFTPDelegate: SFTPDelegate {
         }
         let url = try resolvePath(path)
         let name = path == "/" ? "/" : url.lastPathComponent
-        let attributes = getFileAttributes(url: url)
+        let attributes = (try? getFileAttributes(url: url)) ?? Citadel.SFTPFileAttributes(size: 0)
         return [Citadel.SFTPPathComponent(filename: name, longname: name, attributes: attributes)]
     }
     
@@ -291,6 +308,20 @@ final nonisolated class MySFTPDelegate: SFTPDelegate {
     }
     
     func setFileAttributes(to attributes: Citadel.SFTPFileAttributes, atPath path: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+        let url = try resolvePath(path)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return .noSuchFile
+        }
+        var attributesDict = [FileAttributeKey: Any]()
+        if let permissions = attributes.permissions {
+            attributesDict[.posixPermissions] = NSNumber(value: permissions & 0o7777)
+        }
+        if let mtime = attributes.accessModificationTime?.modificationTime {
+            attributesDict[.modificationDate] = mtime
+        }
+        if !attributesDict.isEmpty {
+            try? FileManager.default.setAttributes(attributesDict, ofItemAtPath: url.path)
+        }
         return .ok
     }
     
@@ -359,15 +390,28 @@ final nonisolated class MyFileHandle: SFTPFileHandle {
     }
     
     func close() async throws -> Citadel.SFTPStatusCode {
-        try fileHandle.close()
+        if #available(macOS 10.15.4, *) {
+            try? fileHandle.synchronize()
+        }
+        try? fileHandle.close()
         return .ok
     }
     
     func readFileAttributes() async throws -> Citadel.SFTPFileAttributes {
-        return getFileAttributes(url: url)
+        return try getFileAttributes(url: url)
     }
     
     func setFileAttributes(to attributes: Citadel.SFTPFileAttributes) async throws {
+        var attributesDict = [FileAttributeKey: Any]()
+        if let permissions = attributes.permissions {
+            attributesDict[.posixPermissions] = NSNumber(value: permissions & 0o7777)
+        }
+        if let mtime = attributes.accessModificationTime?.modificationTime {
+            attributesDict[.modificationDate] = mtime
+        }
+        if !attributesDict.isEmpty {
+            try? FileManager.default.setAttributes(attributesDict, ofItemAtPath: url.path)
+        }
     }
 }
 
