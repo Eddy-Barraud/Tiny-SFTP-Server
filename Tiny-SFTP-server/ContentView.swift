@@ -13,126 +13,128 @@ struct ContentView: View {
     @State private var isLogsExpanded: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            
-            // MARK: - Configuration Settings (Disabled while server is running)
-            Group {
-                // MARK: - Shared Directory Selection
-                HStack {
-                    Text("Shared Folder:")
-                        .frame(width: 100, alignment: .trailing)
-                    TextField("Select a folder...", text: $settings.sharedFolderPath)
-                        .disabled(true)
-                    Button("Browse...") {
-                        selectFolder()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                
+                // MARK: - Configuration Settings (Disabled while server is running)
+                Group {
+                    // MARK: - Shared Directory Selection
+                    HStack {
+                        Text("Shared Folder:")
+                            .frame(width: 100, alignment: .trailing)
+                        TextField("Select a folder...", text: $settings.sharedFolderPath)
+                            .disabled(true)
+                        Button("Browse...") {
+                            selectFolder()
+                        }
+                    }
+                    
+                    // MARK: - Port Configuration
+                    HStack {
+                        Text("Port:")
+                            .frame(width: 100, alignment: .trailing)
+                        TextField("e.g. 2222", text: $settings.port)
+                            .frame(width: 80)
+                    }
+                    
+                    // MARK: - Power Management Toggle
+                    HStack {
+                        Spacer().frame(width: 100)
+                        Toggle("Prevent Mac from sleeping when server is running", isOn: $settings.preventSleep)
+                    }
+                    
+                    Divider()
+                    
+                    // MARK: - Authentication Settings
+                    HStack {
+                        Spacer().frame(width: 100)
+                        Toggle("Allow anonymous connections (Any password)", isOn: $settings.allowAnonymous)
+                    }
+                    
+                    HStack {
+                        Text("Username:")
+                            .frame(width: 100, alignment: .trailing)
+                        TextField("Username", text: $settings.username)
+                    }
+                    
+                    HStack {
+                        Text("Password:")
+                            .frame(width: 100, alignment: .trailing)
+                        SecureField("Password", text: $settings.password)
+                    }
+                    
+                    HStack {
+                        Spacer().frame(width: 100)
+                        Button("Wipe Credentials") {
+                            settings.username = ""
+                            settings.password = ""
+                        }
                     }
                 }
-                
-                // MARK: - Port Configuration
-                HStack {
-                    Text("Port:")
-                        .frame(width: 100, alignment: .trailing)
-                    TextField("e.g. 2222", text: $settings.port)
-                        .frame(width: 80)
-                }
-                
-                // MARK: - Power Management Toggle
-                HStack {
-                    Spacer().frame(width: 100)
-                    Toggle("Prevent Mac from sleeping when server is running", isOn: $settings.preventSleep)
-                }
+                .disabled(settings.isServerRunning)
                 
                 Divider()
                 
-                // MARK: - Authentication Settings
+                // MARK: - Server Control Button
                 HStack {
-                    Spacer().frame(width: 100)
-                    Toggle("Allow anonymous connections (Any password)", isOn: $settings.allowAnonymous)
-                }
-                
-                HStack {
-                    Text("Username:")
-                        .frame(width: 100, alignment: .trailing)
-                    TextField("Username", text: $settings.username)
-                }
-                
-                HStack {
-                    Text("Password:")
-                        .frame(width: 100, alignment: .trailing)
-                    SecureField("Password", text: $settings.password)
-                }
-                
-                HStack {
-                    Spacer().frame(width: 100)
-                    Button("Wipe Credentials") {
-                        settings.username = ""
-                        settings.password = ""
-                    }
-                }
-            }
-            .disabled(settings.isServerRunning)
-            
-            Divider()
-            
-            // MARK: - Server Control Button
-            HStack {
-                Spacer()
-                if settings.isServerRunning {
-                    Button("Stop Server") {
-                        SFTPServer.shared.stop()
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-                } else {
-                    Button("Start Server") {
-                        if settings.sharedFolderPath.isEmpty {
-                            selectFolder()
-                        }
-                        if !settings.sharedFolderPath.isEmpty {
-                            SFTPServer.shared.start()
-                        }
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
-                }
-                Spacer()
-            }
-            
-            // MARK: - Live Server Logs
-            DisclosureGroup(isExpanded: $isLogsExpanded) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(settings.logs) { log in
-                            Text(log.message)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(minHeight: 120, maxHeight: 220)
-                .padding(4)
-                .background(Color(NSColor.textBackgroundColor))
-                .cornerRadius(4)
-            } label: {
-                HStack {
-                    Text("Server Logs")
                     Spacer()
-                    Button("Copy") {
-                        let logText = settings.logs.map { $0.message }.joined(separator: "\n")
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(logText, forType: .string)
+                    if settings.isServerRunning {
+                        Button("Stop Server") {
+                            SFTPServer.shared.stop()
+                        }
+                        .keyboardShortcut(.defaultAction)
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                    } else {
+                        Button("Start Server") {
+                            if settings.sharedFolderPath.isEmpty {
+                                selectFolder()
+                            }
+                            if !settings.sharedFolderPath.isEmpty {
+                                SFTPServer.shared.start()
+                            }
+                        }
+                        .keyboardShortcut(.defaultAction)
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
                     }
-                    .buttonStyle(BorderlessButtonStyle())
+                    Spacer()
                 }
+                
+                // MARK: - Live Server Logs
+                DisclosureGroup(isExpanded: $isLogsExpanded) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(settings.logs) { log in
+                                Text(log.message)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(minHeight: 120, maxHeight: 220)
+                    .padding(4)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(4)
+                } label: {
+                    HStack {
+                        Text("Server Logs")
+                        Spacer()
+                        Button("Copy") {
+                            let logText = settings.logs.map { $0.message }.joined(separator: "\n")
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(logText, forType: .string)
+                        }
+                        .buttonStyle(BorderlessButtonStyle())
+                    }
+                }
+                
             }
-            
+            .padding()
         }
-        .padding()
-        .frame(minWidth: 300, idealWidth: 320, maxWidth: 360, minHeight: 560, idealHeight: 600)
+        .frame(minWidth: 320, idealWidth: 360, maxWidth: 450, minHeight: 480, idealHeight: 600)
         .alert("Server Error", isPresented: Binding(
             get: { settings.errorMessage != nil },
             set: { if !$0 { settings.errorMessage = nil } }
