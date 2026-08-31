@@ -26,6 +26,7 @@ class SFTPSettings: ObservableObject {
     
     @Published var isServerRunning: Bool = false
     @Published var logs: [LogEntry] = []
+    @Published var errorMessage: String? = nil
     
     // MARK: - Security-Scoped Folder Resolution
     

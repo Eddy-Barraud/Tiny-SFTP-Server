@@ -1,5 +1,4 @@
 import Foundation
-@preconcurrency import Citadel
 @preconcurrency import NIOSSH
 @preconcurrency import NIOCore
 import Crypto
@@ -10,8 +9,8 @@ import NIOFoundationCompat
 /// Extracts SFTP-compatible file attributes for a given local file or directory URL.
 /// - Parameter url: The URL of the local file system item.
 /// - Throws: An error if the file or directory does not exist or attributes cannot be read.
-/// - Returns: A populated `Citadel.SFTPFileAttributes` struct.
-nonisolated fileprivate func getFileAttributes(url: URL) throws -> Citadel.SFTPFileAttributes {
+/// - Returns: A populated `SFTPFileAttributes` struct.
+nonisolated fileprivate func getFileAttributes(url: URL) throws -> SFTPFileAttributes {
     guard FileManager.default.fileExists(atPath: url.path) else {
         throw NSError(domain: "SFTPServer", code: 404, userInfo: [NSLocalizedDescriptionKey: "No such file or directory"])
     }
@@ -19,7 +18,7 @@ nonisolated fileprivate func getFileAttributes(url: URL) throws -> Citadel.SFTPF
     let size = attr[.size] as? UInt64 ?? 0
     let isDirectory = (attr[.type] as? FileAttributeType) == .typeDirectory
     
-    var attributes = Citadel.SFTPFileAttributes(size: size)
+    var attributes = SFTPFileAttributes(size: size)
     var permissions = (attr[.posixPermissions] as? NSNumber)?.uint32Value ?? (isDirectory ? 0o755 : 0o644)
     if isDirectory {
         permissions |= 0o040000 // S_IFDIR
@@ -37,14 +36,14 @@ nonisolated fileprivate func getFileAttributes(url: URL) throws -> Citadel.SFTPF
 /// - Parameters:
 ///   - url: The item URL.
 ///   - filename: Optional custom display name; defaults to `url.lastPathComponent`.
-/// - Returns: A populated `Citadel.SFTPPathComponent`.
-nonisolated fileprivate func makePathComponent(url: URL, filename: String? = nil) -> Citadel.SFTPPathComponent {
+/// - Returns: A populated `SFTPPathComponent`.
+nonisolated fileprivate func makePathComponent(url: URL, filename: String? = nil) -> SFTPPathComponent {
     let name = filename ?? url.lastPathComponent
     let attr = (try? FileManager.default.attributesOfItem(atPath: url.path)) ?? [:]
     let size = attr[.size] as? UInt64 ?? 0
     let isDirectory = (attr[.type] as? FileAttributeType) == .typeDirectory
     
-    var attributes = Citadel.SFTPFileAttributes(size: size)
+    var attributes = SFTPFileAttributes(size: size)
     var permissions = (attr[.posixPermissions] as? NSNumber)?.uint32Value ?? (isDirectory ? 0o755 : 0o644)
     if isDirectory {
         permissions |= 0o040000 // S_IFDIR
@@ -62,7 +61,7 @@ nonisolated fileprivate func makePathComponent(url: URL, filename: String? = nil
     
     let typeChar = isDirectory ? "d" : "-"
     let longname = "\(typeChar)rwxr-xr-x 1 owner group \(size) \(dateString) \(name)"
-    return Citadel.SFTPPathComponent(filename: name, longname: longname, attributes: attributes)
+    return SFTPPathComponent(filename: name, longname: longname, attributes: attributes)
 }
 
 // MARK: - SSH Authentication Handler
@@ -109,7 +108,7 @@ final nonisolated class LoginHandler: NIOSSHServerUserAuthenticationDelegate {
 
 // MARK: - SFTP Server Lifecycle
 
-/// Manages starting, stopping, and hosting the Citadel/NIOSSH SFTP server instance.
+/// Manages starting, stopping, and hosting the NIOSSH SFTP server instance.
 @MainActor
 class SFTPServer {
     static let shared = SFTPServer()
@@ -160,10 +159,53 @@ class SFTPServer {
                     SleepPreventer.shared.startPreventingSleep()
                 }
             } catch {
-                SFTPSettings.shared.log("Failed to start server: \(error.localizedDescription)")
+                let message = SFTPServer.formatStartServerError(error, port: portNumber)
+                SFTPSettings.shared.log("Failed to start server: \(message)")
+                SFTPSettings.shared.errorMessage = message
                 self.stop()
             }
         }
+    }
+    
+    /// Translates low-level networking/NIO errors into actionable user-friendly messages.
+    private static func formatStartServerError(_ error: Error, port: Int) -> String {
+        if let ioError = error as? IOError {
+            if ioError.errnoCode == EADDRINUSE {
+                return "Port \(port) is already in use by another application. Please choose a different port or terminate the conflicting process."
+            } else if ioError.errnoCode == EPERM || ioError.errnoCode == EACCES {
+                if port < 1024 {
+                    return "Port \(port) requires administrator/root privileges. Please choose a port number above 1024 (e.g. 2222)."
+                } else {
+                    return "Port \(port) could not be opened (port is already in use or permission was denied). Please choose a different port."
+                }
+            }
+        }
+        
+        let nsError = error as NSError
+        if nsError.domain == NSPOSIXErrorDomain {
+            if nsError.code == Int(EADDRINUSE) {
+                return "Port \(port) is already in use by another application. Please choose a different port."
+            } else if nsError.code == Int(EPERM) || nsError.code == Int(EACCES) {
+                if port < 1024 {
+                    return "Port \(port) requires administrator privileges (< 1024). Please choose a port above 1024 (e.g. 2222)."
+                } else {
+                    return "Port \(port) could not be bound (permission denied or port already in use). Please choose a different port."
+                }
+            }
+        }
+        
+        let desc = error.localizedDescription
+        if desc.contains("error 48") || desc.contains("Address already in use") {
+            return "Port \(port) is already in use by another application. Please choose a different port."
+        } else if desc.contains("error 1") || desc.contains("error 13") || desc.contains("Operation not permitted") {
+            if port < 1024 {
+                return "Port \(port) requires administrator privileges (< 1024). Please choose a port above 1024 (e.g. 2222)."
+            } else {
+                return "Port \(port) could not be bound (port already in use or permission denied). Please choose a different port."
+            }
+        }
+        
+        return error.localizedDescription
     }
     
     /// Gracefully stops the SFTP server and releases all security-scoped resources.
@@ -184,7 +226,7 @@ class SFTPServer {
 
 // MARK: - SFTP Delegate Implementation
 
-/// Implements Citadel's `SFTPDelegate` protocol to handle file system operations securely.
+/// Implements the `SFTPDelegate` protocol to handle file system operations securely.
 final nonisolated class MySFTPDelegate: SFTPDelegate {
     let baseDirectory: URL?
     
@@ -221,12 +263,12 @@ final nonisolated class MySFTPDelegate: SFTPDelegate {
         return targetURL
     }
     
-    func fileAttributes(atPath path: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPFileAttributes {
+    func fileAttributes(atPath path: String, context: SSHContext) async throws -> SFTPFileAttributes {
         let url = try resolvePath(path)
         return try getFileAttributes(url: url)
     }
     
-    func openFile(_ filePath: String, withAttributes: Citadel.SFTPFileAttributes, flags: Citadel.SFTPOpenFileFlags, context: Citadel.SSHContext) async throws -> any Citadel.SFTPFileHandle {
+    func openFile(_ filePath: String, withAttributes: SFTPFileAttributes, flags: SFTPOpenFileFlags, context: SSHContext) async throws -> any SFTPFileHandle {
         let url = try resolvePath(filePath)
         
         // Handle file creation if requested
@@ -270,45 +312,45 @@ final nonisolated class MySFTPDelegate: SFTPDelegate {
         return MyFileHandle(fileHandle: fileHandle, url: url)
     }
     
-    func removeFile(_ filePath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+    func removeFile(_ filePath: String, context: SSHContext) async throws -> SFTPStatusCode {
         let url = try resolvePath(filePath)
         try FileManager.default.removeItem(at: url)
         await SFTPSettings.shared.log("Removed file: \(filePath)")
         return .ok
     }
     
-    func createDirectory(_ filePath: String, withAttributes: Citadel.SFTPFileAttributes, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+    func createDirectory(_ filePath: String, withAttributes: SFTPFileAttributes, context: SSHContext) async throws -> SFTPStatusCode {
         let url = try resolvePath(filePath)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false, attributes: nil)
         await SFTPSettings.shared.log("Created directory: \(filePath)")
         return .ok
     }
     
-    func removeDirectory(_ filePath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+    func removeDirectory(_ filePath: String, context: SSHContext) async throws -> SFTPStatusCode {
         let url = try resolvePath(filePath)
         try FileManager.default.removeItem(at: url)
         await SFTPSettings.shared.log("Removed directory: \(filePath)")
         return .ok
     }
     
-    func realPath(for canonicalUrl: String, context: Citadel.SSHContext) async throws -> [Citadel.SFTPPathComponent] {
+    func realPath(for canonicalUrl: String, context: SSHContext) async throws -> [SFTPPathComponent] {
         var path = canonicalUrl
         if path.isEmpty || path == "." {
             path = "/"
         }
         let url = try resolvePath(path)
         let name = path == "/" ? "/" : url.lastPathComponent
-        let attributes = (try? getFileAttributes(url: url)) ?? Citadel.SFTPFileAttributes(size: 0)
-        return [Citadel.SFTPPathComponent(filename: name, longname: name, attributes: attributes)]
+        let attributes = (try? getFileAttributes(url: url)) ?? SFTPFileAttributes(size: 0)
+        return [SFTPPathComponent(filename: name, longname: name, attributes: attributes)]
     }
     
-    func openDirectory(atPath path: String, context: Citadel.SSHContext) async throws -> any Citadel.SFTPDirectoryHandle {
+    func openDirectory(atPath path: String, context: SSHContext) async throws -> any SFTPDirectoryHandle {
         let url = try resolvePath(path)
         await SFTPSettings.shared.log("Listed directory: \(path)")
         return MyDirectoryHandle(url: url)
     }
     
-    func setFileAttributes(to attributes: Citadel.SFTPFileAttributes, atPath path: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+    func setFileAttributes(to attributes: SFTPFileAttributes, atPath path: String, context: SSHContext) async throws -> SFTPStatusCode {
         let url = try resolvePath(path)
         guard FileManager.default.fileExists(atPath: url.path) else {
             return .noSuchFile
@@ -326,15 +368,15 @@ final nonisolated class MySFTPDelegate: SFTPDelegate {
         return .ok
     }
     
-    func addSymlink(linkPath: String, targetPath: String, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+    func addSymlink(linkPath: String, targetPath: String, context: SSHContext) async throws -> SFTPStatusCode {
         return .failure
     }
     
-    func readSymlink(atPath path: String, context: Citadel.SSHContext) async throws -> [Citadel.SFTPPathComponent] {
+    func readSymlink(atPath path: String, context: SSHContext) async throws -> [SFTPPathComponent] {
         return []
     }
     
-    func rename(oldPath: String, newPath: String, flags: UInt32, context: Citadel.SSHContext) async throws -> Citadel.SFTPStatusCode {
+    func rename(oldPath: String, newPath: String, flags: UInt32, context: SSHContext) async throws -> SFTPStatusCode {
         let oldUrl = try resolvePath(oldPath)
         let newUrl = try resolvePath(newPath)
         try FileManager.default.moveItem(at: oldUrl, to: newUrl)
@@ -376,7 +418,7 @@ final nonisolated class MyFileHandle: SFTPFileHandle {
         }
     }
     
-    func write(_ data: NIOCore.ByteBuffer, atOffset offset: UInt64) async throws -> Citadel.SFTPStatusCode {
+    func write(_ data: NIOCore.ByteBuffer, atOffset offset: UInt64) async throws -> SFTPStatusCode {
         try fileHandle.seek(toOffset: offset)
         var dataCopy = data
         if let bytes = dataCopy.readBytes(length: dataCopy.readableBytes) {
@@ -390,7 +432,7 @@ final nonisolated class MyFileHandle: SFTPFileHandle {
         return .ok
     }
     
-    func close() async throws -> Citadel.SFTPStatusCode {
+    func close() async throws -> SFTPStatusCode {
         if #available(macOS 10.15.4, *) {
             try? fileHandle.synchronize()
         }
@@ -398,11 +440,11 @@ final nonisolated class MyFileHandle: SFTPFileHandle {
         return .ok
     }
     
-    func readFileAttributes() async throws -> Citadel.SFTPFileAttributes {
+    func readFileAttributes() async throws -> SFTPFileAttributes {
         return try getFileAttributes(url: url)
     }
     
-    func setFileAttributes(to attributes: Citadel.SFTPFileAttributes) async throws {
+    func setFileAttributes(to attributes: SFTPFileAttributes) async throws {
         var attributesDict = [FileAttributeKey: Any]()
         if let permissions = attributes.permissions {
             attributesDict[.posixPermissions] = NSNumber(value: permissions & 0o7777)
@@ -426,8 +468,8 @@ final nonisolated class MyDirectoryHandle: SFTPDirectoryHandle {
         self.url = url
     }
     
-    func listFiles(context: Citadel.SSHContext) async throws -> [Citadel.SFTPFileListing] {
-        var paths = [Citadel.SFTPPathComponent]()
+    func listFiles(context: SSHContext) async throws -> [SFTPFileListing] {
+        var paths = [SFTPPathComponent]()
         paths.append(makePathComponent(url: url, filename: "."))
         paths.append(makePathComponent(url: url.deletingLastPathComponent(), filename: ".."))
         
@@ -437,7 +479,7 @@ final nonisolated class MyDirectoryHandle: SFTPDirectoryHandle {
             paths.append(makePathComponent(url: item))
         }
         
-        // Chunk each item into its own SFTPFileListing so Citadel streams them across readdir calls without exceeding packet limits
-        return paths.map { Citadel.SFTPFileListing(path: [$0]) }
+        // Chunk each item into its own SFTPFileListing so the server streams them across readdir calls without exceeding packet limits
+        return paths.map { SFTPFileListing(path: [$0]) }
     }
 }

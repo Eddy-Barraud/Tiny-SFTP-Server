@@ -133,6 +133,21 @@ struct ContentView: View {
         }
         .padding()
         .frame(minWidth: 300, idealWidth: 320, maxWidth: 360, minHeight: 560, idealHeight: 600)
+        .alert("Server Error", isPresented: Binding(
+            get: { settings.errorMessage != nil },
+            set: { if !$0 { settings.errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                settings.errorMessage = nil
+            }
+        } message: {
+            Text(settings.errorMessage ?? "")
+        }
+        .onChange(of: settings.errorMessage) { newError in
+            if newError != nil {
+                isLogsExpanded = true
+            }
+        }
     }
     
     // MARK: - Folder Picker Modal

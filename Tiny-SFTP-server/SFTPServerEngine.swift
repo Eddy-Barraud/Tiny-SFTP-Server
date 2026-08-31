@@ -7,7 +7,6 @@ import Foundation
 @preconcurrency import NIOCore
 @preconcurrency import NIOPosix
 @preconcurrency import NIOSSH
-import Citadel
 
 // MARK: - SFTP Constants
 
@@ -404,7 +403,7 @@ final class SFTPSessionHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     private func makeContext() -> SSHContext {
-        unsafeBitCast(self.username as String?, to: SSHContext.self)
+        SSHContext(username: self.username)
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -814,8 +813,9 @@ final class SFTPServerEngine: @unchecked Sendable {
 
         let bootstrap = ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .serverChannelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
+            .serverChannelOption(ChannelOptions.socket(SocketOptionLevel(IPPROTO_TCP), TCP_NODELAY), value: 1)
             .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-            .childChannelOption(ChannelOptions.allowRemoteHalfClosure, value: true)
             .childChannelInitializer { channel in
                 let serverConfig = SSHServerConfiguration(
                     hostKeys: hostKeys,

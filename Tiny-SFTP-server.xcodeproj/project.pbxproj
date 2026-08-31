@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		3646CBAD3040C1350021AADB /* Citadel in Frameworks */ = {isa = PBXBuildFile; productRef = 3646CBAC3040C1350021AADB /* Citadel */; };
+		360B00483046108900B95CEA /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = 360B00473046108900B95CEA /* NIOSSH */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,7 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3646CBAD3040C1350021AADB /* Citadel in Frameworks */,
+				360B00483046108900B95CEA /* NIOSSH in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,7 +70,7 @@
 			);
 			name = "Tiny-SFTP-server";
 			packageProductDependencies = (
-				3646CBAC3040C1350021AADB /* Citadel */,
+				360B00473046108900B95CEA /* NIOSSH */,
 			);
 			productName = "Tiny-SFTP-server";
 			productReference = 3646CB9B3040BE790021AADB /* Tiny-SFTP-server.app */;
@@ -101,7 +101,7 @@
 			mainGroup = 3646CB923040BE790021AADB;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				3646CBAB3040C1350021AADB /* XCRemoteSwiftPackageReference "Citadel" */,
+				360B00463046108900B95CEA /* XCRemoteSwiftPackageReference "swift-nio-ssh" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3646CB9C3040BE790021AADB /* Products */;
@@ -364,21 +364,21 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		3646CBAB3040C1350021AADB /* XCRemoteSwiftPackageReference "Citadel" */ = {
+		360B00463046108900B95CEA /* XCRemoteSwiftPackageReference "swift-nio-ssh" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/orlandos-nl/Citadel.git";
+			repositoryURL = "https://github.com/apple/swift-nio-ssh.git";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.15.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		3646CBAC3040C1350021AADB /* Citadel */ = {
+		360B00473046108900B95CEA /* NIOSSH */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 3646CBAB3040C1350021AADB /* XCRemoteSwiftPackageReference "Citadel" */;
-			productName = Citadel;
+			package = 360B00463046108900B95CEA /* XCRemoteSwiftPackageReference "swift-nio-ssh" */;
+			productName = NIOSSH;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

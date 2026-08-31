@@ -57,7 +57,6 @@ A lightweight, native macOS SFTP server application built with SwiftUI and Swift
 
 This project is made possible thanks to the following open-source projects:
 
-- **[Citadel](https://github.com/orlandos-nl/Citadel)** by [Joannis Orlandos](https://github.com/orlandos-nl): An elegant SSH and SFTP library for Swift built on top of SwiftNIO.
 - **[SwiftNIO SSH](https://github.com/apple/swift-nio-ssh)** & **[SwiftNIO](https://github.com/apple/swift-nio)** by Apple.
 
 ---
